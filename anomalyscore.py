@@ -225,11 +225,13 @@ def iostat_cpu_usage():
         # plt.show()
         # plt.savefig("fixed_bins/iostat_avg_cpu_user/bins_avg_cpu_user_iostat_window_number{}.png".format(i), dpi=500)
 
-        x1 = np.asarray(x)
+        # TODO: x should contain the array which has the numbers for each bin at each window of 100 seconds
+        #       UPDATE: array "n" returned from plt.hist function above, contains the data we need!
+        x1 = np.asarray(n)
         x2 = np.reshape(x1, (1, len(x1)))
         x3 = -x2
         x4 = softmax(x3)
-        x5 = np.reshape(x4, len(x))
+        x5 = np.reshape(x4, len(n))
         x6 = x5.tolist()
 
         lst_softmaxed.append(x6)
