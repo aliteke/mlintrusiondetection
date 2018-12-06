@@ -16,7 +16,7 @@ def main():
 				#print "[--] line: " + line
 
 				date_time = fp.readline().strip()					#	2018-02-15T09:21:13:608862676
-				curline=fp.readline()											#	Linux 3.10.0-327.13.1.el7.x86_64 (poseidon0050.wgcloud.uvic.ca) 	02/15/2018 	_x86_64_	(32 CPU)
+				curline=fp.readline()								#	Linux 3.10.0-327.13.1.el7.x86_64 (poseidon0050.wgcloud.uvic.ca) 	02/15/2018 	_x86_64_	(32 CPU)
 				name=curline.split(" ")[2][1:-1]					#	poseidon0050.wgcloud.uvic.ca
 
 				dict_iostat_vmstat_a_d.iostat = {"date_time" : date_time, "name" : name }
