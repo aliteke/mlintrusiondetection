@@ -7,4 +7,5 @@ converts the *iostat*, *vmstat -a* and *vmstat -d* command logs, into JSON forma
 ### anomalyscore.py
 Takes JSON formatted data as input and detects anomalies in the CPU/Memory/Disk Usage.
 
-(Code in this repository contains shared work of Xinfinity Research Group (https://www.cs.sunyit.edu/~chiangc/xinfinity/) at SUNY Polytechnic Institute)
+
+*Code in this repository contains shared work of Xinfinity Research Group (https://www.cs.sunyit.edu/~chiangc/xinfinity/) at SUNY Polytechnic Institute*
