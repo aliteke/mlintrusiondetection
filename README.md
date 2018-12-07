@@ -1,5 +1,5 @@
 # mlintrusiondetection
-Python Scripts for Detecting Anomalies in Cloud Hypervisor (ISOT-Dataset from University of Victoria[https://www.uvic.ca/engineering/ece/isot/]) using machine learning techniques.
+Python Scripts for Detecting Anomalies in Cloud Hypervisor using machine learning techniques. Dataset used by permission from University of Victoria, Information Security and Object Technology Research Lab [ISOT](ISOT-Dataset from University of Victoria  https://www.uvic.ca/engineering/ece/isot/ "ISOT Lab")
 
 ### iostat_to_json_convertor.py
 converts the *iostat*, *vmstat -a* and *vmstat -d* command logs, into JSON format. (These commands were run on a cloud hypervisor hosting vms under attack)
