@@ -7,12 +7,28 @@ import numpy as np
 import datetime as dt
 from sklearn.utils.extmath import softmax   # Dr. Bruno
 from scipy.stats import entropy             # Dr. Bruno
+from scipy.linalg import hankel             # To calculate Hankel Toeplitz Matrix for bins at each time window
+from numpy import linalg as LA              # LA.eig() will calculate EigenValues and EigenVectors of Henkel Matrix
+
+
+def henkel_matrix(n):
+    hm = hankel(n)
+    if len(hm) % 2 == 1:
+        dim = len(hm) / 2 + 1
+    else:
+        dim = len(hm) / 2       # last element will be lost (0)
+
+    h = hm[0:dim, 0:dim]        # real hankel matrix
+
+    eigenvalues, eigenvectors = LA.eig(h)
+
+    return eigenvalues, eigenvectors
 
 
 def vmstat_d_disk_reads_sda_total():
     total_number_of_bins = 20
-    sliding_time_window_in_seconds = 100
-    overlapping_time_window = 20
+    sliding_time_window_in_seconds = 1000
+    overlapping_time_window = 10
 
     jsondata="../full_data.json"
 
@@ -132,6 +148,12 @@ def iostat_cpu_usage():
     # List of anomaly
     anomaly_scores = []
 
+    # list of EigenValues for each window, calculated from HenkelMatrix for that time window's bins array
+    lst_eigenvalues = []
+
+    # list of EigenVectors for each window, calculated from HenkelMatrix for that time window's bins array
+    lst_eigenvectors = []
+
     for i in data_dict["tree_root"]:
         cur_t = i["iostat"]["date_time"]
         index = cur_t.rfind(":")
@@ -140,12 +162,12 @@ def iostat_cpu_usage():
         lst_time.append(cur_t)
 
         # "iowait": "0.08", "system": "0.26", "idle": "97.74", "user": "1.93", "cpu_nice": "0.00", "steal": "0.00"
-        avg_cpu_iowait_sum=0
-        avg_cpu_system_sum=0
-        avg_cpu_idle_sum= 0
-        avg_cpu_user_sum= 0
-        avg_cpu_cpu_nice_sum= 0
-        avg_cpu_steal_sum= 0
+        avg_cpu_iowait_sum = 0
+        avg_cpu_system_sum = 0
+        avg_cpu_idle_sum = 0
+        avg_cpu_user_sum = 0
+        avg_cpu_cpu_nice_sum = 0
+        avg_cpu_steal_sum = 0
 
         for j in i["iostat"]["list_stats"]["list_stats"]:
             avg_cpu_iowait_sum += float(j["avg-cpu"]["iowait"])
@@ -180,7 +202,7 @@ def iostat_cpu_usage():
     while i < len(lst_time):
         initial_index = i                       # starting index for time window
         curtime = lst_time[i]                   # current time from list of time records
-        endtime = curtime + dt.timedelta(seconds=sliding_time_window_in_seconds)    # upper bound for time record in window
+        endtime = curtime + dt.timedelta(seconds=sliding_time_window_in_seconds)  # upper bound for time record in window
 
         while (curtime <= endtime) and (i < len(lst_time)):     # loop until we found the index for final time record
             i += 1
@@ -225,16 +247,39 @@ def iostat_cpu_usage():
         # plt.show()
         # plt.savefig("fixed_bins/iostat_avg_cpu_user/bins_avg_cpu_user_iostat_window_number{}.png".format(i), dpi=500)
 
+        # TODO: Calculate Hankel - Toeplitz Matrix, then calculate EigenValues and EigenVectors
+        #       for the bin distribution at the current time window.
+        #       number of data points stored at each bin is stored in array => "n"
+        e_values, e_vectors = henkel_matrix(x)
+        lst_eigenvalues.append(e_values)
+        lst_eigenvectors.append(e_vectors)
+
         # TODO: x should contain the array which has the numbers for each bin at each window of 100 seconds
         #       UPDATE: array "n" returned from plt.hist function above, contains the data we need!
-        x1 = np.asarray(n)
+        x1 = np.asarray(x)
         x2 = np.reshape(x1, (1, len(x1)))
         x3 = -x2
         x4 = softmax(x3)
-        x5 = np.reshape(x4, len(n))
+        x5 = np.reshape(x4, len(x))
         x6 = x5.tolist()
 
-        lst_softmaxed.append(x6)
+        lst_softmaxed.append(x6)        # Probability distribution of cpu usage
+
+        # Calculate bins for PDF of X vector
+        plt.clf()  # clear the figure
+        max_P = 1
+        min_P = 0
+        delta_P = max_P - min_P
+        bin_width_P = float(delta_P) / float(total_number_of_bins)  # size of each bin, depending on the number of bins
+        bin_edges_P = np.arange(min_P, max_P, bin_width_P).tolist()  # calculate each bin's boundaries
+        bin_edges_P.append(max_P)
+        nP, binsP, patchesP = plt.hist(x6,
+                                    bins=bin_edges_P,
+                                    range=[min_P, max_P],
+                                    normed=False,
+                                    rwidth=0.85
+                                    )
+        plt.show()
 
     print "[+] Size of lst_sofmaxed: %d" % (len(lst_softmaxed))
 
@@ -269,6 +314,8 @@ def iostat_cpu_usage():
     plt.title("Anomaly Score Graph")
     plt.grid(True)
     plt.plot(anomaly_scores)                # Plots the Anomaly Scores from KL calculations
+    plt.show()
+
 
 def main():
     iostat_cpu_usage()
