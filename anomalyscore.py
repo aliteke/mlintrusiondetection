@@ -11,7 +11,7 @@ from scipy.linalg import hankel             # To calculate Hankel Toeplitz Matri
 from numpy import linalg as LA              # LA.eig() will calculate EigenValues and EigenVectors of Henkel Matrix
 
 
-def henkel_matrix(n):
+def hankel_matrix(n):
     hm = hankel(n)
     if len(hm) % 2 == 1:
         dim = len(hm) / 2 + 1
@@ -19,16 +19,14 @@ def henkel_matrix(n):
         dim = len(hm) / 2       # last element will be lost (0)
 
     h = hm[0:dim, 0:dim]        # real hankel matrix
-
     eigenvalues, eigenvectors = LA.eig(h)
-
     return eigenvalues, eigenvectors
 
 
 def vmstat_d_disk_reads_sda_total():
     total_number_of_bins = 20
-    sliding_time_window_in_seconds = 1000
-    overlapping_time_window = 10
+    time_window_in_seconds = 1000
+    time_window_shift = 10
 
     jsondata="../full_data.json"
 
@@ -41,8 +39,8 @@ def vmstat_d_disk_reads_sda_total():
 
     print "[+] Total number of items in tree_root: %d" % (len(data_dict["tree_root"]))
 
-    lst_sda_read_total=[]
-    lst_sda_time=[]
+    lst_sda_read_total = []
+    lst_sda_time = []
     for i in data_dict["tree_root"]:
         for j in i["vmstat_d"]["list_stats"]:
             cur_t = i["vmstat_d"]["date_time"]
@@ -66,7 +64,7 @@ def vmstat_d_disk_reads_sda_total():
     while i < len(lst_sda_time):
         initial_index = i				# starting index for time window
         curtime = lst_sda_time[i]
-        endtime = curtime + dt.timedelta(seconds=sliding_time_window_in_seconds)
+        endtime = curtime + dt.timedelta(seconds=time_window_in_seconds)
 
         while (curtime <= endtime) and (i < len(lst_sda_time)):
             i += 1
@@ -80,7 +78,7 @@ def vmstat_d_disk_reads_sda_total():
         plt.ylabel("# of Elements in a Bin)")
         plt.title("vmstat_d, (Total Disk Reads from sda)," + "\n" +
                   "#bins: %d, sliding_time_window: %d sec, time_delta: %d" %
-                  (total_number_of_bins, sliding_time_window_in_seconds, (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds()) +
+                  (total_number_of_bins, time_window_in_seconds, (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds()) +
                   "\n" + "curtime: {}".format(str(lst_sda_time[initial_index])))
         plt.grid(True)
         # n, bins, patches = plt.hist(lst_sda_read_total[initial_index:ending_index], bins=total_number_of_bins, normed=True)
@@ -93,7 +91,7 @@ def vmstat_d_disk_reads_sda_total():
         y = mlab.normpdf(bins, cur_mean, cur_stddev)
         plt.plot(bins, y, '--')
 
-        print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, sliding_time_window_in_seconds, str(lst_sda_time[initial_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds(), initial_index, ending_index)
+        print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, time_window_in_seconds, str(lst_sda_time[initial_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds(), initial_index, ending_index)
         plt.show()
         plt.savefig("fixed_bins/bins_sda_total_disk_read_vmstatd{}.png".format(i), dpi=500)
 
@@ -118,8 +116,8 @@ def vmstat_d_disk_reads_sda_total():
 
 def iostat_cpu_usage():
     total_number_of_bins = 20
-    sliding_time_window_in_seconds = 100
-    overlapping_time_window = 20
+    time_window_in_seconds = 100
+    time_window_shift = 20
     jsondata="../full_data.json"
 
     if not os.path.isfile(jsondata):
@@ -135,7 +133,7 @@ def iostat_cpu_usage():
     lst_avg_cpu_user = []
     lst_avg_cpu_nice = []
     lst_avg_cpu_system = []
-    lst_avg_cpu_iowait =[]
+    lst_avg_cpu_iowait = []
     lst_avg_cpu_steal = []
     lst_avg_cpu_idle = []
 
@@ -202,7 +200,7 @@ def iostat_cpu_usage():
     while i < len(lst_time):
         initial_index = i                       # starting index for time window
         curtime = lst_time[i]                   # current time from list of time records
-        endtime = curtime + dt.timedelta(seconds=sliding_time_window_in_seconds)  # upper bound for time record in window
+        endtime = curtime + dt.timedelta(seconds=time_window_in_seconds)  # upper bound for time record in window
 
         while (curtime <= endtime) and (i < len(lst_time)):     # loop until we found the index for final time record
             i += 1
@@ -216,7 +214,7 @@ def iostat_cpu_usage():
         plt.ylabel("# of Elements in a Bin)")
         plt.title("iostat, (avg_cpu_usage_for_user)," + "\n" +
                   "#bins: %d, sliding_time_window: %d sec, actual_time_delta: %d" %
-                  (total_number_of_bins, sliding_time_window_in_seconds,
+                  (total_number_of_bins, time_window_in_seconds,
                    (lst_time[ending_index] - lst_time[initial_index]).total_seconds()) +
                   "\n" + "curtime: {}".format(str(lst_time[initial_index])))
         plt.grid(True)
@@ -238,7 +236,7 @@ def iostat_cpu_usage():
               "end_index: %d, " \
               "len(x): %d, " \
               "X: %s" % \
-              (total_number_of_bins, sliding_time_window_in_seconds, str(lst_time[initial_index]),
+              (total_number_of_bins, time_window_in_seconds, str(lst_time[initial_index]),
                str(lst_time[ending_index]), (lst_time[ending_index] - lst_time[initial_index]).total_seconds(),
                initial_index, ending_index, len(x), x)
 
@@ -250,17 +248,17 @@ def iostat_cpu_usage():
         # TODO: Calculate Hankel - Toeplitz Matrix, then calculate EigenValues and EigenVectors
         #       for the bin distribution at the current time window.
         #       number of data points stored at each bin is stored in array => "n"
-        e_values, e_vectors = henkel_matrix(x)
+        e_values, e_vectors = hankel_matrix(x)
         lst_eigenvalues.append(e_values)
         lst_eigenvectors.append(e_vectors)
 
         # TODO: x should contain the array which has the numbers for each bin at each window of 100 seconds
         #       UPDATE: array "n" returned from plt.hist function above, contains the data we need!
-        x1 = np.asarray(x)
+        x1 = np.asarray(n)
         x2 = np.reshape(x1, (1, len(x1)))
         x3 = -x2
         x4 = softmax(x3)
-        x5 = np.reshape(x4, len(x))
+        x5 = np.reshape(x4, len(n))
         x6 = x5.tolist()
 
         lst_softmaxed.append(x6)        # Probability distribution of cpu usage
