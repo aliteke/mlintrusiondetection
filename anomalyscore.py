@@ -62,7 +62,7 @@ def vmstat_d_disk_reads_sda_total():
 
     i = 0
     while i < len(lst_sda_time):
-        initial_index = i				# starting index for time window
+        starting_index = i				# starting index for time window
         curtime = lst_sda_time[i]
         endtime = curtime + dt.timedelta(seconds=time_window_in_seconds)
 
@@ -78,11 +78,11 @@ def vmstat_d_disk_reads_sda_total():
         plt.ylabel("# of Elements in a Bin)")
         plt.title("vmstat_d, (Total Disk Reads from sda)," + "\n" +
                   "#bins: %d, sliding_time_window: %d sec, time_delta: %d" %
-                  (total_number_of_bins, time_window_in_seconds, (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds()) +
-                  "\n" + "curtime: {}".format(str(lst_sda_time[initial_index])))
+                  (total_number_of_bins, time_window_in_seconds, (lst_sda_time[ending_index]-lst_sda_time[starting_index]).total_seconds()) +
+                  "\n" + "curtime: {}".format(str(lst_sda_time[starting_index])))
         plt.grid(True)
-        # n, bins, patches = plt.hist(lst_sda_read_total[initial_index:ending_index], bins=total_number_of_bins, normed=True)
-        n, bins, patches = plt.hist(lst_sda_read_total[initial_index:ending_index],
+        # n, bins, patches = plt.hist(lst_sda_read_total[starting_index:ending_index], bins=total_number_of_bins, normed=True)
+        n, bins, patches = plt.hist(lst_sda_read_total[starting_index:ending_index],
                                     bins=bin_edges,
                                     range=[min_read_amount,max_read_amount],
                                     normed=True)
@@ -91,7 +91,7 @@ def vmstat_d_disk_reads_sda_total():
         y = mlab.normpdf(bins, cur_mean, cur_stddev)
         plt.plot(bins, y, '--')
 
-        print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, time_window_in_seconds, str(lst_sda_time[initial_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[initial_index]).total_seconds(), initial_index, ending_index)
+        print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, time_window_in_seconds, str(lst_sda_time[starting_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[starting_index]).total_seconds(), starting_index, ending_index)
         plt.show()
         plt.savefig("fixed_bins/bins_sda_total_disk_read_vmstatd{}.png".format(i), dpi=500)
 
@@ -118,7 +118,7 @@ def iostat_cpu_usage():
     total_number_of_bins = 20
     time_window_in_seconds = 100
     time_window_shift = 20
-    jsondata="../full_data.json"
+    jsondata = "../full_data.json"
 
     if not os.path.isfile(jsondata):
         print "[!] Couldn't find json data file %s" % jsondata
@@ -196,10 +196,28 @@ def iostat_cpu_usage():
     bin_edges.append(max_avg_cpu_user)
 
     # TODO: We need to slide the time window so that it overlaps with the previous window
+    greenwich = lst_time[0]                     # First time point from the experiment's log file.
     i = 0
+    number_of_time_shifts = 0                   # at each iteration we will shift the curent window "time_window_shift"
+    starting_index = 0                          # starting index for current time window
+
     while i < len(lst_time):
-        initial_index = i                       # starting index for time window
-        curtime = lst_time[i]                   # current time from list of time records
+        total_shift = number_of_time_shifts * time_window_shift
+        number_of_time_shifts += 1
+
+        curtime = greenwich + dt.timedelta(seconds=total_shift)
+
+        # find the current window's starting index,
+        # so that lst_time[starting_index] is less than or equal to curtime
+        # lst_time[ starting_index ] <= curtime
+
+        while lst_time[starting_index] <= curtime:
+            starting_index += 1
+
+        starting_index -= 1
+        i = starting_index                      # reset "i" to start from the start_index for the current window
+        curtime = lst_time[starting_index]      # reset curtime to starting time for the current window
+
         endtime = curtime + dt.timedelta(seconds=time_window_in_seconds)  # upper bound for time record in window
 
         while (curtime <= endtime) and (i < len(lst_time)):     # loop until we found the index for final time record
@@ -215,30 +233,17 @@ def iostat_cpu_usage():
         plt.title("iostat, (avg_cpu_usage_for_user)," + "\n" +
                   "#bins: %d, sliding_time_window: %d sec, actual_time_delta: %d" %
                   (total_number_of_bins, time_window_in_seconds,
-                   (lst_time[ending_index] - lst_time[initial_index]).total_seconds()) +
-                  "\n" + "curtime: {}".format(str(lst_time[initial_index])))
+                   (lst_time[ending_index] - lst_time[starting_index]).total_seconds()) +
+                  "\n" + "curtime: {}".format(str(lst_time[starting_index])))
         plt.grid(True)
-        # n, bins, patches = \
-        #    plt.hist(lst_sda_read_total[initial_index:ending_index], bins=total_number_of_bins, normed=True)
-        x = lst_avg_cpu_user[initial_index:ending_index+1]              # CPU values from the current time window
+
+        x = lst_avg_cpu_user[starting_index:ending_index+1]              # CPU values from the current time window
         n, bins, patches = plt.hist(x,
                                     bins=bin_edges,
                                     range=[min_avg_cpu_user, max_avg_cpu_user],
                                     normed=False,
                                     rwidth=0.85
                                     )
-
-        print "[+] #bins: %d, " \
-              "time_window: %d sec, " \
-              "from-to: %s-%s, " \
-              "delta: %d, " \
-              "init_index: %d, " \
-              "end_index: %d, " \
-              "len(x): %d, " \
-              "X: %s" % \
-              (total_number_of_bins, time_window_in_seconds, str(lst_time[initial_index]),
-               str(lst_time[ending_index]), (lst_time[ending_index] - lst_time[initial_index]).total_seconds(),
-               initial_index, ending_index, len(x), x)
 
         # NOTE: If you would like to see the images created, un-comment the next line
         #       To save those images in a sub_folder on your computer, uncomment the following line.
@@ -263,6 +268,23 @@ def iostat_cpu_usage():
 
         lst_softmaxed.append(x6)        # Probability distribution of cpu usage
 
+        print "[+] Window#: %d, " \
+              "#bins: %d, " \
+              "time_shift: %d sec, " \
+              "window_size: %d sec, " \
+              "from-to: %s-%s, " \
+              "delta: %d, " \
+              "init_index: %d, " \
+              "end_index: %d, " \
+              "len(x): %d, " \
+              "x: %s, " \
+              "EigenValues of Hankel(x) : %s" % \
+              (number_of_time_shifts, total_number_of_bins, time_window_shift, time_window_in_seconds, str(lst_time[starting_index]),
+               str(lst_time[ending_index]), (lst_time[ending_index] - lst_time[starting_index]).total_seconds(),
+               starting_index, ending_index, len(x), x, str(e_values))
+
+        """
+        # Dr. Korkut abi, wanted to see the distribution for softmax(X) into 20 bins between 0 to 1
         # Calculate bins for PDF of X vector
         plt.clf()  # clear the figure
         max_P = 1
@@ -278,19 +300,23 @@ def iostat_cpu_usage():
                                     rwidth=0.85
                                     )
         plt.show()
+        """
 
-    print "[+] Size of lst_sofmaxed: %d" % (len(lst_softmaxed))
+    # Now we went through whole array of values, calculated softmaxes, it's time to calculate anomaly_scores
+    print "[+] Size of lst_softmaxed: %d" % (len(lst_softmaxed))
 
     # These are the weights for KL calculations
     alpha = 0.6
     beta = 0.25
     gamma = 0.15
 
+    ############################################################
     # calculate KL distance starting from index 3.
     # Will compare current item, (i), with  (i-1), (i-2), (i-3)
     # alpha * KL( lst_softmaxed[i], lst_sofmaxed[i-1] ) + 
     # beta * KL( lst_softmaxed[i], lst_softmaxed[i-2] ) + 
     # gamma * KL ( lst_softmaxed[i], lst_softmaxed[i-3])
+    ############################################################
     for i in range(3, len(lst_softmaxed)):
         kl1 = entropy(lst_softmaxed[i], lst_softmaxed[i-1])
         kl2 = entropy(lst_softmaxed[i-1], lst_softmaxed[i])
@@ -309,10 +335,13 @@ def iostat_cpu_usage():
     plt.clf()                               # clear the figure
     plt.xlabel("Sliding Time Window")
     plt.ylabel("Anomaly Score")
-    plt.title("Anomaly Score Graph")
+    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, win_slide: %d sec" % ((len(anomaly_scores)+3),  time_window_in_seconds, time_window_shift))
     plt.grid(True)
     plt.plot(anomaly_scores)                # Plots the Anomaly Scores from KL calculations
     plt.show()
+    # plt.savefig("fixed_bins/iostat_avg_cpu_user/anomaly_score.png".format(i), dpi=500)
+
+    print "[+] Size of Anomaly_Scores: %d"%(len(anomaly_scores))
 
 
 def main():
