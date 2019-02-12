@@ -146,6 +146,9 @@ def iostat_cpu_usage():
     # List of anomaly
     anomaly_scores = []
 
+    # TESTING list of Dr. Bruno's anomaly scores
+    anomaly_scores_T = []
+
     # list of EigenValues for each window, calculated from HenkelMatrix for that time window's bins array
     lst_eigenvalues = []
 
@@ -198,7 +201,7 @@ def iostat_cpu_usage():
     # TODO: We need to slide the time window so that it overlaps with the previous window
     greenwich = lst_time[0]                     # First time point from the experiment's log file.
     i = 0
-    number_of_time_shifts = 0                   # at each iteration we will shift the curent window "time_window_shift"
+    number_of_time_shifts = 0                   # at each iteration we will shift the current window "time_window_shift"
     starting_index = 0                          # starting index for current time window
 
     while i < len(lst_time):
@@ -310,6 +313,19 @@ def iostat_cpu_usage():
     beta = 0.25
     gamma = 0.15
 
+    # Moving Average of f
+    lst_mvavg = [0]
+    # Standard Deviation, that are recursively updated below
+    lst_std = [0]
+    # anomaly threshold
+    lst_anomaly_threshold = [0]
+
+    # In Dr. Bruno's paper this is defined as Gamma, we call it Zeta here
+    zeta = 0.6
+    theta = 0.59
+
+    k = -1
+
     ############################################################
     # calculate KL distance starting from index 3.
     # Will compare current item, (i), with  (i-1), (i-2), (i-3)
@@ -330,7 +346,42 @@ def iostat_cpu_usage():
         kl8 = entropy(lst_softmaxed[i-3], lst_softmaxed[i])
         kl9 = kl7 + kl8
 
+        # TESTING
+        j1 = [z * alpha for z in lst_softmaxed[i - 1]]
+        j2 = [z * beta for z in lst_softmaxed[i - 2]]
+        j3 = [z * gamma for z in lst_softmaxed[i - 3]]
+        j4 = [sum(index1) for index1 in zip(j1, j2, j3)]
+
+        tl1 = entropy(lst_softmaxed[i], j4)
+        tl2 = entropy(j4, lst_softmaxed[i])
+        tl3 = tl1 + tl2
+
         anomaly_scores.append((alpha * kl3) + (beta * kl6) + (gamma * kl9))
+        anomaly_scores_T.append(tl3)
+
+        k = k+1
+        if i > 3:
+            # Adding Moving Average (mvavg) and Standard Deviation (std), Zeta (given)
+            lst_mvavg.append((zeta * lst_mvavg[k-1]) + ((1-zeta) * anomaly_scores_T[k-1]))
+
+            std_dev_tmp = np.sqrt(zeta * (lst_std[k - 1] ** 2) + ((1 - zeta) * (tl3 - lst_mvavg[k])**2))
+            lst_std.append(std_dev_tmp)
+
+            lst_anomaly_threshold.append(lst_mvavg[k - 1] + theta * lst_std[k-1])
+
+
+
+    plt.clf()
+    plt.xlabel("Sliding Time Window")
+    plt.ylabel("Anomaly Score")
+    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, win_slide: %d sec" % (
+    (len(anomaly_scores) + 3), time_window_in_seconds, time_window_shift))
+    plt.grid(True)
+    plt.plot(anomaly_scores_T, 'b')  # Plots the Anomaly Scores from KL calculations
+    plt.plot(lst_anomaly_threshold, 'r')  # Plots the Anomaly Scores from KL calculations
+    plt.show()
+
+
         
     plt.clf()                               # clear the figure
     plt.xlabel("Sliding Time Window")
