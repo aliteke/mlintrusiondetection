@@ -147,7 +147,7 @@ def iostat_cpu_usage():
     anomaly_scores = []
 
     # TESTING list of Dr. Bruno's anomaly scores
-    anomaly_scores_T = []
+    lst_anomaly_scores_T = []
 
     # list of EigenValues for each window, calculated from HenkelMatrix for that time window's bins array
     lst_eigenvalues = []
@@ -309,29 +309,46 @@ def iostat_cpu_usage():
     print "[+] Size of lst_softmaxed: %d" % (len(lst_softmaxed))
 
     # These are the weights for KL calculations
-    alpha = 0.6
-    beta = 0.25
-    gamma = 0.15
+    m1 = 0.6
+    m2 = 0.25
+    m3 = 0.15
+
+    # epsilon
+    epsilon = 0.05
 
     # Moving Average of f
     lst_mvavg = [0]
+
     # Standard Deviation, that are recursively updated below
     lst_std = [0]
+
     # anomaly threshold
-    lst_anomaly_threshold = [0]
+    lst_anomaly_runningavg = [0]
 
-    # In Dr. Bruno's paper this is defined as Gamma, we call it Zeta here
-    zeta = 0.6
-    theta = 0.59
+    # difference between f(w) and moving averages
+    lst_delta = [epsilon]
 
-    k = -1
+    # In paper gamma is used in Eq.7 to calculate MU_w
+    gamma = 0.3
+    # In paper alpha is used in Eq.8 to calculate f(w)
+    alpha = 0.59
+
+    # this will count till 3 before calculating new moving averages
+    reset_wait_counter = 0
+
+    # anomaly detected
+    b_anomaly_detected = False
+
+    # right after an anomaly, we need to start counting,
+    # keep another boolean to detect the start of counting time
+    b_start_timer = False
 
     ############################################################
     # calculate KL distance starting from index 3.
     # Will compare current item, (i), with  (i-1), (i-2), (i-3)
-    # alpha * KL( lst_softmaxed[i], lst_sofmaxed[i-1] ) + 
-    # beta * KL( lst_softmaxed[i], lst_softmaxed[i-2] ) + 
-    # gamma * KL ( lst_softmaxed[i], lst_softmaxed[i-3])
+    # m1 * KL( lst_softmaxed[i], lst_sofmaxed[i-1] ) +
+    # m2 * KL( lst_softmaxed[i], lst_softmaxed[i-2] ) +
+    # m3 * KL ( lst_softmaxed[i], lst_softmaxed[i-3])
     ############################################################
     for i in range(3, len(lst_softmaxed)):
         kl1 = entropy(lst_softmaxed[i], lst_softmaxed[i-1])
@@ -346,43 +363,85 @@ def iostat_cpu_usage():
         kl8 = entropy(lst_softmaxed[i-3], lst_softmaxed[i])
         kl9 = kl7 + kl8
 
+        # lst_softmaxed -> paper's equation-(6)
         # TESTING
-        j1 = [z * alpha for z in lst_softmaxed[i - 1]]
-        j2 = [z * beta for z in lst_softmaxed[i - 2]]
-        j3 = [z * gamma for z in lst_softmaxed[i - 3]]
+        j1 = [z * m1 for z in lst_softmaxed[i - 1]]
+        j2 = [z * m2 for z in lst_softmaxed[i - 2]]
+        j3 = [z * m3 for z in lst_softmaxed[i - 3]]
         j4 = [sum(index1) for index1 in zip(j1, j2, j3)]
 
         tl1 = entropy(lst_softmaxed[i], j4)
         tl2 = entropy(j4, lst_softmaxed[i])
         tl3 = tl1 + tl2
 
-        anomaly_scores.append((alpha * kl3) + (beta * kl6) + (gamma * kl9))
-        anomaly_scores_T.append(tl3)
+        anomaly_scores.append((m1 * kl3) + (m2 * kl6) + (m3 * kl9))     # NOT USED, left from previous implementation.
 
-        k = k+1
+        # List of anomaly scores "lst_anomaly_scores_T" is used now, in the paper f(w)
+        if i == 3:
+            lst_anomaly_scores_T.append(tl3)
+
         if i > 3:
-            # Adding Moving Average (mvavg) and Standard Deviation (std), Zeta (given)
-            lst_mvavg.append((zeta * lst_mvavg[k-1]) + ((1-zeta) * anomaly_scores_T[k-1]))
+            # Adding Moving Average (mvavg) and Standard Deviation (std), gamma (given)
+            # lst_anomaly_scores_T[i] -> f(w)
+            if b_start_timer and not b_anomaly_detected and 3 >= reset_wait_counter > 0:
+                lst_mvavg.append(0)
+                lst_std.append(0)
+                lst_anomaly_scores_T.append(0)
 
-            std_dev_tmp = np.sqrt(zeta * (lst_std[k - 1] ** 2) + ((1 - zeta) * (tl3 - lst_mvavg[k])**2))
-            lst_std.append(std_dev_tmp)
+            else:
+                lst_mvavg.append((gamma * lst_mvavg[i-4]) + ((1-gamma) * lst_anomaly_scores_T[i-4]))
+                std_dev_tmp = np.sqrt(gamma * (lst_std[i - 4] ** 2) + ((1 - gamma) * (tl3 - lst_mvavg[i-3])**2))
+                lst_std.append(std_dev_tmp)
+                lst_anomaly_scores_T.append(tl3)
 
-            lst_anomaly_threshold.append(lst_mvavg[k - 1] + theta * lst_std[k-1])
+            # lst_anomaly_runningavg -> paper's nu_{w-1} + alpha*sigma{w-1}  Equation-7
+            # lst_mvavg -> paper's mu
+            # lst_std -> paper's sigma
+            lst_anomaly_runningavg.append(lst_mvavg[i - 4] + alpha * lst_std[i-4])
+            lst_delta.append(lst_anomaly_scores_T[-1] - lst_anomaly_runningavg[-1])
+
+            if lst_delta[-1] > epsilon and not b_anomaly_detected:
+                b_anomaly_detected = True
+                # reset_wait_counter += 1
+
+            # We are in ANOMALY REGION, check for leaving ANOMALY
+            elif lst_delta[-1] > epsilon and b_anomaly_detected:
+                # do nothing
+                continue
+            # Going back below epsilon threshold,
+            # change the boolean(detected) to false,
+            # start the counter (reset_wait_counter)
+            elif lst_delta[-1] <= epsilon and b_anomaly_detected:
+                b_anomaly_detected = False
+                b_start_timer = True
+
+            if b_start_timer and reset_wait_counter < 3:
+                reset_wait_counter += 1
+            elif b_start_timer and reset_wait_counter == 3:
+                b_start_timer = False
+                reset_wait_counter = 0
 
 
 
     plt.clf()
+    plt.subplot(2, 1, 1)
     plt.xlabel("Sliding Time Window")
     plt.ylabel("Anomaly Score")
-    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, win_slide: %d sec" % (
-    (len(anomaly_scores) + 3), time_window_in_seconds, time_window_shift))
+    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, win_slide: %d sec, m1: %.2f, m2: %.2f, m3: %.2f, alpha: %.2f, gamma: %.2f, epsilon: %.2f" % ((len(anomaly_scores) + 3), time_window_in_seconds, time_window_shift, m1, m2, m3, alpha, gamma, epsilon))
     plt.grid(True)
-    plt.plot(anomaly_scores_T, 'b')  # Plots the Anomaly Scores from KL calculations
-    plt.plot(lst_anomaly_threshold, 'r')  # Plots the Anomaly Scores from KL calculations
+    plt.plot(lst_anomaly_scores_T, 'b', label = 'f(w)')         # f(w)
+    plt.plot(lst_anomaly_runningavg, 'r', label = r"$(\mu_{w-1} + \alpha \sigma_{w-1})$")        # nu_{w-1} + alpha*sigma{w-1}
+    plt.legend(loc='upper left')
+    plt.subplot(2, 1, 2)
+    plt.xlabel("Sliding Time Window")
+    plt.ylabel(r"$\mu_{w-1} + \alpha \sigma_{w-1}$")
+    plt.plot(lst_delta, 'g', label = "Delta")                    # delta, difference between f(w) and moving averages
+    plt.plot(epsilon * np.ones(len(lst_delta)), 'y', label = "Epsilon")
+    plt.legend(loc='upper left')
     plt.show()
 
 
-        
+    '''    
     plt.clf()                               # clear the figure
     plt.xlabel("Sliding Time Window")
     plt.ylabel("Anomaly Score")
@@ -391,6 +450,7 @@ def iostat_cpu_usage():
     plt.plot(anomaly_scores)                # Plots the Anomaly Scores from KL calculations
     plt.show()
     # plt.savefig("fixed_bins/iostat_avg_cpu_user/anomaly_score.png".format(i), dpi=500)
+    '''
 
     print "[+] Size of Anomaly_Scores: %d"%(len(anomaly_scores))
 
