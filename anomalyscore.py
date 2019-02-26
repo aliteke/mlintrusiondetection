@@ -1,5 +1,5 @@
 import json
-import os.path
+import os
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
@@ -31,7 +31,7 @@ def vmstat_d_disk_reads_sda_total():
     jsondata="../full_data.json"
 
     if not os.path.isfile(jsondata):
-        print "[!] Couldn't find json data file %s" % (jsondata)
+        print "[!] Couldn't find json data file %s" % jsondata
         sys.exit()
 
     with open(jsondata, 'r') as f:
@@ -60,6 +60,10 @@ def vmstat_d_disk_reads_sda_total():
     bin_width = delta_read_bytes / total_number_of_bins
     bin_edges = range(min_read_amount, max_read_amount, bin_width)
 
+    # list of 2 values, will keep (start_index, ending_index) for each window
+    lst_window_start_end_indices = []
+
+
     i = 0
     while i < len(lst_sda_time):
         starting_index = i				# starting index for time window
@@ -73,6 +77,8 @@ def vmstat_d_disk_reads_sda_total():
             curtime = lst_sda_time[i]
 
         ending_index = i-1				            # final index in the current time window
+        lst_window_start_end_indices.append((starting_index, ending_index))
+
         plt.clf()						            # clear the figure
         plt.xlabel("Total Disk Read")
         plt.ylabel("# of Elements in a Bin)")
@@ -91,7 +97,7 @@ def vmstat_d_disk_reads_sda_total():
         y = mlab.normpdf(bins, cur_mean, cur_stddev)
         plt.plot(bins, y, '--')
 
-        print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, time_window_in_seconds, str(lst_sda_time[starting_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[starting_index]).total_seconds(), starting_index, ending_index)
+        #print"[+] #bins: %d, time_window: %d sec, from-to: %s-%s, delta: %d, init_index: %d, end_index: %d" % (total_number_of_bins, time_window_in_seconds, str(lst_sda_time[starting_index]), str(lst_sda_time[ending_index]), (lst_sda_time[ending_index]-lst_sda_time[starting_index]).total_seconds(), starting_index, ending_index)
         plt.show()
         plt.savefig("fixed_bins/bins_sda_total_disk_read_vmstatd{}.png".format(i), dpi=500)
 
@@ -114,11 +120,40 @@ def vmstat_d_disk_reads_sda_total():
 """
 
 
-def iostat_cpu_usage():
+# arguments are 6 list of floating point numbers, and last one is list of times in datetime format
+def plot_list(lst_avg_cpu_user, lst_avg_cpu_nice, lst_avg_cpu_system, lst_avg_cpu_iowait, lst_avg_cpu_steal, lst_avg_cpu_idle, lst_time):
+    plt.clf()
+
+    plt.xlabel("Date-Time")
+    plt.ylabel("CPU Usage")
+    plt.title("CPU Usage averages for User, System, IO-Wait, Steal, Nice, Idle (iostat)")
+    plt.grid(True)
+    plt.plot(lst_time, lst_avg_cpu_user, 'bo', label='avg_cpu_user')
+    plt.plot(lst_time, lst_avg_cpu_nice, 'g+', label="avg_cpu_nice")
+    plt.plot(lst_time, lst_avg_cpu_system, 'r*', label="avg_cpu_system")
+    plt.plot(lst_time, lst_avg_cpu_iowait, 'c:', label='avg_cpu_iowait')
+    plt.plot(lst_time, lst_avg_cpu_steal, 'm--', label="avg_cpu_steal")
+    # plt.plot(lst_avg_cpu_idle, lst_time,'k-.', label="avg_cpu_idle")
+    plt.legend(loc='upper left')
+    plt.show()
+
+
+
+def generate_syn_cpu_data( data_length, perc ):
+    mu, sigma = 0.75, 0.2  # mean and standard deviation
+    s = np.random.normal(mu, sigma, data_length)
+    su = np.random.uniform(2, 7, int(len(s) * perc))
+    anomaly_index = np.random.randint(1, int(len(s)), int(len(su)))
+    for i in range(0, len(su) - 1):
+        s[anomaly_index[i]] = su[i]
+
+    anomaly_index.sort()
+    return s, anomaly_index
+
+def iostat_cpu_usage(jsondata):
     total_number_of_bins = 20
     time_window_in_seconds = 100
     time_window_shift = 20
-    jsondata = "../full_data.json"
 
     if not os.path.isfile(jsondata):
         print "[!] Couldn't find json data file %s" % jsondata
@@ -136,6 +171,9 @@ def iostat_cpu_usage():
     lst_avg_cpu_iowait = []
     lst_avg_cpu_steal = []
     lst_avg_cpu_idle = []
+
+    # Synthetic Random Anomaly Data
+    lst_syn_cpu_data = []
 
     # this will collect the time iostat was run at each time
     lst_time = []
@@ -187,6 +225,14 @@ def iostat_cpu_usage():
         lst_avg_cpu_steal.append(avg_cpu_steal_sum/3.0)
         lst_avg_cpu_idle.append(avg_cpu_idle_sum/3.0)
 
+    # Adding plot function for CPU values (Feb 22)
+    # plot_list(lst_avg_cpu_user, lst_avg_cpu_nice, lst_avg_cpu_system, lst_avg_cpu_iowait, lst_avg_cpu_steal, lst_avg_cpu_idle, lst_time)
+
+    # Generate Random, Anomaly Data
+    (lst_random_cpu_data, anomaly_artificial_index) = generate_syn_cpu_data(len(lst_avg_cpu_user), 0.10)
+
+    lst_avg_cpu_user = lst_random_cpu_data.tolist()
+
     # calculation for one parameter.
     # TODO We should make this part a function, so that we could call for different CPU parameters
     total_experiment_in_seconds = (lst_time[len(lst_time) - 1] - lst_time[0]).total_seconds()
@@ -203,6 +249,9 @@ def iostat_cpu_usage():
     i = 0
     number_of_time_shifts = 0                   # at each iteration we will shift the current window "time_window_shift"
     starting_index = 0                          # starting index for current time window
+
+    # list of 2 value tuples, will keep (start_index, ending_index) for each window
+    lst_window_start_end_indices = []
 
     while i < len(lst_time):
         total_shift = number_of_time_shifts * time_window_shift
@@ -230,6 +279,10 @@ def iostat_cpu_usage():
             curtime = lst_time[i]
 
         ending_index = i - 1                    # index for biggest time value in the current time window
+
+        # add (starting_index, ending_index) to list of window indexes
+        lst_window_start_end_indices.append((starting_index, ending_index))
+
         plt.clf()                               # clear the figure
         plt.xlabel("IOSTAT_Avg_CPU_user")
         plt.ylabel("# of Elements in a Bin)")
@@ -309,12 +362,12 @@ def iostat_cpu_usage():
     print "[+] Size of lst_softmaxed: %d" % (len(lst_softmaxed))
 
     # These are the weights for KL calculations
-    m1 = 0.6
+    m1 = 0.7
     m2 = 0.25
-    m3 = 0.15
+    m3 = 0.05
 
     # epsilon
-    epsilon = 0.05
+    epsilon = 0.025
 
     # Moving Average of f
     lst_mvavg = [0]
@@ -421,27 +474,66 @@ def iostat_cpu_usage():
                 b_start_timer = False
                 reset_wait_counter = 0
 
-
-
     plt.clf()
-    plt.subplot(2, 1, 1)
+    fig = plt.figure(figsize=(12.8, 9.6))
+    plt.subplot(3, 1, 1)
     plt.xlabel("Sliding Time Window")
     plt.ylabel("Anomaly Score")
-    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, win_slide: %d sec, m1: %.2f, m2: %.2f, m3: %.2f, alpha: %.2f, gamma: %.2f, epsilon: %.2f" % ((len(anomaly_scores) + 3), time_window_in_seconds, time_window_shift, m1, m2, m3, alpha, gamma, epsilon))
+    plt.title("Anomaly Score Graph\n#Windows: %d, window: %d sec, "
+              "win_slide: %d sec, m1: %.2f, m2: %.2f, m3: %.2f, "
+              "alpha: %.2f, gamma: %.2f, epsilon: %.2f" %
+              ((len(anomaly_scores) + 3), time_window_in_seconds, time_window_shift, m1, m2, m3, alpha, gamma, epsilon))
     plt.grid(True)
-    plt.plot(lst_anomaly_scores_T, 'b', label = 'f(w)')         # f(w)
-    plt.plot(lst_anomaly_runningavg, 'r', label = r"$(\mu_{w-1} + \alpha \sigma_{w-1})$")        # nu_{w-1} + alpha*sigma{w-1}
+    plt.plot(lst_anomaly_scores_T, 'b', label='f(w)')         # f(w)
+    plt.plot(lst_anomaly_runningavg, 'r', label=r"$(\mu_{w-1} + \alpha \sigma_{w-1})$")   # nu_{w-1} + alpha*sigma{w-1}
     plt.legend(loc='upper left')
-    plt.subplot(2, 1, 2)
+    plt.subplot(3, 1, 2)
     plt.xlabel("Sliding Time Window")
     plt.ylabel(r"$\mu_{w-1} + \alpha \sigma_{w-1}$")
-    plt.plot(lst_delta, 'g', label = "Delta")                    # delta, difference between f(w) and moving averages
-    plt.plot(epsilon * np.ones(len(lst_delta)), 'y', label = "Epsilon")
+    plt.plot(lst_delta, 'g', label="Delta")                    # delta, difference between f(w) and moving averages
+    plt.plot(epsilon * np.ones(len(lst_delta)), 'y', label="Epsilon")
     plt.legend(loc='upper left')
-    plt.show()
 
+    plt.subplot(3, 1, 3)
+    plt.xlabel("Time")
+    plt.ylabel(r"Syntetic CPU Usage")
+    # plt.plot(lst_avg_cpu_user, 'g', label="CPU")
+    plt.plot(lst_time, lst_avg_cpu_user, 'bo', label='CPU_fake_data')
+    plt.plot(lst_time, 2*np.ones(len(lst_avg_cpu_user)), 'r', label="Delta")
+    plt.legend(loc='upper left')
 
-    '''    
+    # plt.show()
+
+    correct_detection_counter = 0
+    # find windows that has anomalies
+    for x in range(len(lst_delta)):
+        if lst_delta[x] >= epsilon:
+            y = str(greenwich + dt.timedelta(seconds=(x * 20)))
+            z = str(greenwich + dt.timedelta(seconds=((x * 20) + 100)))
+            print "[+] Window Index of Anomaly: %d, Window Start(sec): %s, " \
+                  "Window End(sec): %s, lst_delta[x]: %.4f, x: %d, " \
+                  "epsilon: %.4f" % (x, y, z, lst_delta[x], x, epsilon)
+
+            window_limits = lst_window_start_end_indices[x]
+
+            for current_anomaly_index in anomaly_artificial_index:
+                if window_limits[0] <= current_anomaly_index <= window_limits[1]:
+                    print "[+] Correct anomaly detected!! current_anomaly_index: %d, " \
+                          "window_limits[0]: %d, window_limits[1]: %d" % \
+                          (current_anomaly_index, window_limits[0], window_limits[1])
+                    correct_detection_counter += 1
+                    del(current_anomaly_index[anomaly_artificial_index])
+
+    print "[+] Detection Rate: " + str(float(correct_detection_counter) / anomaly_artificial_index.size)
+
+    pathtostats = "/".join(jsondata.split("/")[:-2])
+    filename = jsondata.split("/")[-1][:-5]
+
+    imagefilename = (pathtostats + "/anomalies/anomaly_score_%s.png") % filename
+    plt.savefig(imagefilename, dpi=1000, bbox_inches='tight')
+    plt.close(fig)
+
+    '''
     plt.clf()                               # clear the figure
     plt.xlabel("Sliding Time Window")
     plt.ylabel("Anomaly Score")
@@ -452,12 +544,30 @@ def iostat_cpu_usage():
     # plt.savefig("fixed_bins/iostat_avg_cpu_user/anomaly_score.png".format(i), dpi=500)
     '''
 
-    print "[+] Size of Anomaly_Scores: %d"%(len(anomaly_scores))
+    print "[+] Size of Anomaly_Scores: %d" % (len(anomaly_scores))
 
 
 def main():
-    iostat_cpu_usage()
-    print"[+] Done..."
+    # hA_jsonsfolder = "/home/tekeoglu/MEGAsync/uvic/ISOT-CID/logs/phase2/hypervisorA/stat/jsons/"
+    # hB_jsonsfolder = "/home/tekeoglu/MEGAsync/uvic/ISOT-CID/logs/phase2/hypervisorB/stat/jsons/"
+    hA_jsonsfolder = "/home/tekeoglu/MEGAsync/uvic/ISOT-CID/logs/phase2/hypervisorA/stat/jsons"
+    hB_jsonsfolder = "/home/tekeoglu/MEGAsync/uvic/ISOT-CID/logs/phase2/hypervisorB/stat/jsons"
+    
+    #hA_jsonsfolder = "C:\\Users\\bekirok\\Documents\\MEGA\\uvic\\ISOT-CID\\logs\\phase2\\hypervisorA\\stat\\jsons"
+    #hB_jsonsfolder = "C:\Users\bekirok\Documents\MEGA\uvic\ISOT-CID\logs\phase2\hypervisorB\stat\jsons"
+
+    hA_jsons = os.listdir(hA_jsonsfolder)
+    hB_jsons = os.listdir(hB_jsonsfolder)
+
+    for x in hA_jsons:
+        iostat_cpu_usage(os.path.join(hA_jsonsfolder, x))
+
+    print"[+] Done with Hypervisor-A jsons..."
+
+    for y in hB_jsons:
+        iostat_cpu_usage(os.path.join(hB_jsonsfolder, y))
+
+    print"[+] Done with Hypervisor-B jsons..."
 
 
 if __name__ == "__main__":
